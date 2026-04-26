@@ -1,0 +1,28 @@
+{
+  "augmentor_sft": {
+    "file_name": "cmc_sft.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
+  },
+  "augmentor_dpo": {
+    "file_name": "cmc_dpo.json",
+    "ranking": true,
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "chosen": "chosen",
+      "rejected": "rejected"
+    }
+  },
+  "wo_judge": {
+    "file_name": "wo_judge.json",
+    "columns": {
+      "prompt": "instruction",
+      "query": "input",
+      "response": "output"
+    }
+  }
+}
