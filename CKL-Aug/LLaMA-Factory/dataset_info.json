@@ -16,13 +16,5 @@
       "chosen": "chosen",
       "rejected": "rejected"
     }
-  },
-  "wo_judge": {
-    "file_name": "wo_judge.json",
-    "columns": {
-      "prompt": "instruction",
-      "query": "input",
-      "response": "output"
-    }
   }
 }
