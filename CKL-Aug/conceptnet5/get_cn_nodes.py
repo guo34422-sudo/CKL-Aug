@@ -1,7 +1,7 @@
 import re
 import pandas as pd
 from opencc import OpenCC
-from romote.auto_annotation.main.get_en_nodes import get_en_node
+from get_en_nodes import get_en_node
 from translate import translate_zh_to_en, translate_en_to_zh
 
 cc = OpenCC("t2s")  
