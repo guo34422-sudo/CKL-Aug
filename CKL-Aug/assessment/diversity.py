@@ -1,25 +1,31 @@
-import itertools
-import json
-from datetime import datetime
-
+import argparse
 import pandas as pd
 import torch
 from transformers import AutoTokenizer, AutoModel
-import argparse
+
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--data_name", type=str, required=True)
+parser.add_argument("--data_path", type=str, required=True)
 parser.add_argument("--COL_ALL", type=str, required=True)
 parser.add_argument("--EMBEDDING_MODEL", type=str, required=True)
 parser.add_argument("--OUTPUT_TXT", type=str, required=True)
-parser.add_argument("--COL_ALL", type=str, required=True)
-parser.add_argument("--BATCH_SIZE", type=str, required=True)
+parser.add_argument("--BATCH_SIZE", type=int, default=8)
+parser.add_argument("--DEVICE", type=str, default="cuda")
+parser.add_argument("--NORMALIZE_EMBEDDINGS", action="store_true")
+
 args = parser.parse_args()
+
+DATA_PATH = args.data_path
+COL_ALL = [col.strip() for col in args.COL_ALL.split(",")]
+EMBEDDING_MODEL = args.EMBEDDING_MODEL
+OUTPUT_TXT = args.OUTPUT_TXT
+BATCH_SIZE = args.BATCH_SIZE
+DEVICE = torch.device(args.DEVICE if torch.cuda.is_available() else "cpu")
+NORMALIZE_EMBEDDINGS = args.NORMALIZE_EMBEDDINGS
 
 
 def load_data(data_path, cols):
     df = pd.read_excel(data_path)
-
     df = df[cols].copy()
 
     for col in cols:
@@ -66,7 +72,6 @@ def encode_texts(texts, tokenizer, model, device, batch_size, max_length, normal
             encoded_input = {k: v.to(device) for k, v in encoded_input.items()}
             model_output = model(**encoded_input)
 
-            # CLS pooling
             embeddings = model_output.last_hidden_state[:, 0]
 
             if normalize_embeddings:
@@ -78,9 +83,6 @@ def encode_texts(texts, tokenizer, model, device, batch_size, max_length, normal
 
 
 def calculate_homogeneity(embeddings):
-    """
-    embeddings: [N, H]
-    """
     n = embeddings.size(0)
     h = embeddings.size(1)
 
@@ -100,8 +102,8 @@ def calculate_homogeneity(embeddings):
         weights_ij = torch.sqrt(squared_dist_ij + 1e-12) ** torch.log(
             torch.tensor(float(h), device=embeddings.device)
         )
-        weights_ij = weights_ij + 1e-12
 
+        weights_ij = weights_ij + 1e-12
         sum_weights = weights_ij.sum()
         prob_trans_ij = weights_ij / sum_weights
         log_prob_trans_ij = torch.log(prob_trans_ij + 1e-10)
@@ -110,14 +112,10 @@ def calculate_homogeneity(embeddings):
         entropy_ij = -torch.sum(v * prob_trans_ij * log_prob_trans_ij)
         entropy += entropy_ij
 
-    homogeneity = (entropy / upper_bound).item()
-    return homogeneity
+    return (entropy / upper_bound).item()
 
 
 def calc_row_embedding_metrics(row_embeddings):
-    """
-    row_embeddings: [N, H]
-    """
     row_embeddings = row_embeddings.float()
     n = row_embeddings.size(0)
 
@@ -131,6 +129,7 @@ def calc_row_embedding_metrics(row_embeddings):
 
     pairwise_dist = torch.cdist(row_embeddings, row_embeddings, p=2)
     upper_mask = torch.triu(torch.ones_like(pairwise_dist, dtype=torch.bool), diagonal=1)
+
     avg_distance = pairwise_dist[upper_mask].mean().item()
 
     sims = torch.matmul(row_embeddings, row_embeddings.T)
@@ -138,7 +137,6 @@ def calc_row_embedding_metrics(row_embeddings):
     avg_dissimilarity = 1.0 - avg_similarity
 
     embed_std = torch.std(row_embeddings, dim=0, unbiased=False).mean().item()
-
     homogeneity = calculate_homogeneity(row_embeddings)
 
     return {
@@ -154,10 +152,10 @@ def main():
     tokenizer, model = load_model(EMBEDDING_MODEL, DEVICE)
 
     all_texts = []
+
     for _, row in df.iterrows():
         for col in COL_ALL:
             all_texts.append(row[col])
-
 
     embeddings = encode_texts(
         texts=all_texts,
@@ -174,16 +172,16 @@ def main():
 
     for idx in range(len(df)):
         base = idx * n_cols
-        row_embeddings = embeddings[base: base + n_cols].to(DEVICE)
+        row_embeddings = embeddings[base:base + n_cols].to(DEVICE)
 
         metric_result = calc_row_embedding_metrics(row_embeddings)
 
         row_result = {"id": idx}
+
         for col in COL_ALL:
             row_result[col] = df.loc[idx, col]
 
         row_result.update(metric_result)
-
         result_rows.append(row_result)
 
     result_df = pd.DataFrame(result_rows)
